@@ -44,7 +44,7 @@ class SafetyController(Node):
 
         # ignore distances more than 3 seconds away
         # -20 to 20 degrees
-        look_ahead = 5 * self.current_speed
+        look_ahead = max(5, 5 * self.current_speed)
         mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < look_ahead)
 
         relevant_ranges = ranges[mask_infront]
@@ -52,24 +52,25 @@ class SafetyController(Node):
 
         # find the equation of the wall's line
         # use some form of least squares...
-        if abs(self.current_speed) <= 0.01:
-            acker_cmd = AckermannDriveStamped()
-            acker_cmd.header.stamp = self.get_clock().now().to_msg()
-            acker_cmd.header.frame_id = "map"
-            acker_cmd.drive.steering_angle = 0.0
-            acker_cmd.drive.steering_angle_velocity = 0.0
-            acker_cmd.drive.speed = 0.0
-            acker_cmd.drive.acceleration = 0.0
-            acker_cmd.drive.jerk = 0.0
+        # if abs(self.current_speed) <= 0.01:
+        #     acker_cmd = AckermannDriveStamped()
+        #     acker_cmd.header.stamp = self.get_clock().now().to_msg()
+        #     acker_cmd.header.frame_id = "map"
+        #     acker_cmd.drive.steering_angle = 0.0
+        #     acker_cmd.drive.steering_angle_velocity = 0.0
+        #     acker_cmd.drive.speed = 0.0
+        #     acker_cmd.drive.acceleration = 0.0
+        #     acker_cmd.drive.jerk = 0.0
 
-            self.safety_command.publish(acker_cmd)
+        #     self.safety_command.publish(acker_cmd)
 
-        elif len(relevant_ranges) != 0:
+        if len(relevant_ranges) != 0:
             x = relevant_ranges * np.cos(relevant_angles)
 
             avg_x = np.mean(x)
 
-            if avg_x < self.current_speed * 2:
+            buffer = max(2, self.current_speed * 2)
+            if avg_x < buffer:
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
