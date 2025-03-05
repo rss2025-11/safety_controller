@@ -13,7 +13,6 @@ from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from visualization_msgs.msg import Marker
 from rcl_interfaces.msg import SetParametersResult
-from wall_follower.visualization_tools import VisualizationTools
 
 
 class SafetyController(Node):
@@ -38,7 +37,7 @@ class SafetyController(Node):
                                                     "/vesc/low_level/input/safety",
                                                     10)
         
-        self.line_pub = self.create_publisher(Marker, "/wall", 1)
+        # self.line_pub = self.create_publisher(Marker, "/wall", 1)
     def listener_callback(self, LaserScanMsg):#, AckerCmd):
         # manipulate laserscan message based on parameters
         ranges = np.array(LaserScanMsg.ranges)
