@@ -69,7 +69,7 @@ class SafetyController(Node):
 
         # if distance_from_wall < 0.25: # TODO: check value
 
-        current_speed = AckerMsg.drive.speed
+        current_speed = self.AckerMsg.drive.speed
         
         if avg_x < current_speed*2:
             acker_cmd = AckermannDriveStamped()
