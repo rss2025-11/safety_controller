@@ -46,28 +46,29 @@ class SafetyController(Node):
         # -20 to 20 degrees
         mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < 5*self.current_speed)
         
-        relavent_ranges = ranges[mask_infront]
-        relavent_angles = angles[mask_infront]
+        relevant_ranges = ranges[mask_infront]
+        relevant_angles = angles[mask_infront]
 
         # find the equation of the wall's line
         # use some form of least squares...
-        if len(relavent_ranges) != 0:
-            x = relavent_ranges*np.cos(relavent_angles)
+        # if len(relevant_ranges) != 0:
+        #     x = relevant_ranges*np.cos(relevant_angles)
             
-            avg_x = np.average(x)
+        #     avg_x = np.average(x)
 
-            if avg_x < self.current_speed*2:
-                acker_cmd = AckermannDriveStamped()
-                acker_cmd.header.stamp = self.get_clock().now().to_msg()
-                acker_cmd.header.frame_id = 'map'
-                acker_cmd.drive.steering_angle = 0.0
-                acker_cmd.drive.steering_angle_velocity = 0.0
-                acker_cmd.drive.speed = 0.0
-                acker_cmd.drive.acceleration = 0.0 
-                acker_cmd.drive.jerk = 0.0
-                self.get_logger().info(f'STOPPED with avg x: {avg_x}')
-                self.safety_command.publish(acker_cmd)
-        self.get_logger().info(f'length of x array: {len(relavent_ranges)}')
+        #     if avg_x < self.current_speed*2:
+        acker_cmd = AckermannDriveStamped()
+        acker_cmd.header.stamp = self.get_clock().now().to_msg()
+        acker_cmd.header.frame_id = 'map'
+        acker_cmd.drive.steering_angle = 0.0
+        acker_cmd.drive.steering_angle_velocity = 0.0
+        acker_cmd.drive.speed = 0.0
+        acker_cmd.drive.acceleration = 0.0 
+        acker_cmd.drive.jerk = 0.0
+        # self.get_logger().info(f'STOPPED with avg x: {avg_x}')
+
+        self.safety_command.publish(acker_cmd)
+        self.get_logger().info(f'length of x array: {len(relevant_ranges)}')
 
     def drive_callback(self, AckerMsg):
         current_speed = AckerMsg.drive.speed
