@@ -13,7 +13,6 @@ from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from visualization_msgs.msg import Marker
 from rcl_interfaces.msg import SetParametersResult
-import time
 
 class SafetyController(Node):
     def __init__(self):
@@ -36,7 +35,6 @@ class SafetyController(Node):
         
         # self.line_pub = self.create_publisher(Marker, "/wall", 1)
     def scan_callback(self, LaserScanMsg):
-        start_time = time.time()
         ranges = np.array(LaserScanMsg.ranges)
         angle_min = LaserScanMsg.angle_min
         angle_max = LaserScanMsg.angle_max
@@ -45,7 +43,8 @@ class SafetyController(Node):
     
         # ignore distances more than 3 seconds away
         # -20 to 20 degrees
-        mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < 5*self.current_speed)
+        look_ahead = 5*self.current_speed
+        mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < look_ahead)
         
         relevant_ranges = ranges[mask_infront]
         relevant_angles = angles[mask_infront]
@@ -67,11 +66,12 @@ class SafetyController(Node):
                 acker_cmd.drive.acceleration = 0.0 
                 acker_cmd.drive.jerk = 0.0
 
-                self.get_logger().info(f'STOPPED with avg x: {avg_x}')
                 self.safety_command.publish(acker_cmd)
-                
-        end_time = time.time()
-        self.get_logger().info(f'Time taken: {end_time - start_time} seconds')
+            else:
+                self.get_logger().info("failed due to avg x")
+        else:
+            self.get_logger().info("failed due to no relevant ranges")
+
 
     def drive_callback(self, AckerMsg):
         current_speed = AckerMsg.drive.speed
