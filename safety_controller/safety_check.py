@@ -13,7 +13,7 @@ from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from visualization_msgs.msg import Marker
 from rcl_interfaces.msg import SetParametersResult
-
+import time
 
 class SafetyController(Node):
     def __init__(self):
@@ -36,6 +36,7 @@ class SafetyController(Node):
         
         # self.line_pub = self.create_publisher(Marker, "/wall", 1)
     def scan_callback(self, LaserScanMsg):
+        start_time = time.time()
         ranges = np.array(LaserScanMsg.ranges)
         angle_min = LaserScanMsg.angle_min
         angle_max = LaserScanMsg.angle_max
@@ -51,24 +52,26 @@ class SafetyController(Node):
 
         # find the equation of the wall's line
         # use some form of least squares...
-        # if len(relevant_ranges) != 0:
-        #     x = relevant_ranges*np.cos(relevant_angles)
+        if len(relevant_ranges) != 0:
+            x = relevant_ranges*np.cos(relevant_angles)
             
-        #     avg_x = np.average(x)
+            avg_x = np.mean(x)
 
-        #     if avg_x < self.current_speed*2:
-        acker_cmd = AckermannDriveStamped()
-        acker_cmd.header.stamp = self.get_clock().now().to_msg()
-        acker_cmd.header.frame_id = 'map'
-        acker_cmd.drive.steering_angle = 0.0
-        acker_cmd.drive.steering_angle_velocity = 0.0
-        acker_cmd.drive.speed = 0.0
-        acker_cmd.drive.acceleration = 0.0 
-        acker_cmd.drive.jerk = 0.0
-        # self.get_logger().info(f'STOPPED with avg x: {avg_x}')
+            if avg_x < self.current_speed*2:
+                acker_cmd = AckermannDriveStamped()
+                acker_cmd.header.stamp = self.get_clock().now().to_msg()
+                acker_cmd.header.frame_id = 'map'
+                acker_cmd.drive.steering_angle = 0.0
+                acker_cmd.drive.steering_angle_velocity = 0.0
+                acker_cmd.drive.speed = 0.0
+                acker_cmd.drive.acceleration = 0.0 
+                acker_cmd.drive.jerk = 0.0
 
-        self.safety_command.publish(acker_cmd)
-        self.get_logger().info(f'length of x array: {len(relevant_ranges)}')
+                self.get_logger().info(f'STOPPED with avg x: {avg_x}')
+                self.safety_command.publish(acker_cmd)
+                
+        end_time = time.time()
+        self.get_logger().info(f'Time taken: {end_time - start_time} seconds')
 
     def drive_callback(self, AckerMsg):
         current_speed = AckerMsg.drive.speed
