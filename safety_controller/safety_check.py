@@ -53,11 +53,12 @@ class SafetyController(Node):
         # find the equation of the wall's line
         # use some form of least squares...
         if abs(self.current_speed) <= 0.01 or len(relevant_ranges) != 0:
+
             x = relevant_ranges * np.cos(relevant_angles)
 
             avg_x = np.mean(x)
 
-            if abs(self.current_speed) > 0.01 or avg_x < self.current_speed * 2:
+            if abs(self.current_speed) <= 0.01 or avg_x < self.current_speed * 2:
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
