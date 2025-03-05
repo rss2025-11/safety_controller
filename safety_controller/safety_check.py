@@ -19,11 +19,6 @@ class SafetyController(Node):
     def __init__(self):
         super().__init__("safety_controller")
 
-        # self.declare_parameter("drive_topic", "default")
-        # self.declare_parameter("scan_topic", "default")
-
-        # self.SCAN_TOPIC = self.get_parameter('scan_topic').get_parameter_value().string_value
-        # self.DRIVE_TOPIC = self.get_parameter('drive_topic').get_parameter_value().string_value
 
         self.laser_scan_sub = self.create_subscription(LaserScan,
                                                      "/scan",
@@ -46,28 +41,33 @@ class SafetyController(Node):
         angle_max = LaserScanMsg.angle_max
         angle_increment = LaserScanMsg.angle_increment
         angles = np.arange(angle_min, angle_max, angle_increment)
-
-        mask_infront = (angles > -np.pi/4) & (angles < np.pi/4)
-
+    
+        # ignore distances more than 3 seconds away
+        # -20 to 20 degrees
+        mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < 5*self.current_speed)
+        
         relavent_ranges = ranges[mask_infront]
         relavent_angles = angles[mask_infront]
 
         # find the equation of the wall's line
         # use some form of least squares...
-        x = relavent_ranges*np.cos(relavent_angles)
-        avg_x = np.average(x)
+        if len(relavent_ranges) != 0:
+            x = relavent_ranges*np.cos(relavent_angles)
+            
+            avg_x = np.average(x)
 
-        if avg_x < self.current_speed*2:
-            acker_cmd = AckermannDriveStamped()
-            acker_cmd.header.stamp = self.get_clock().now().to_msg()
-            acker_cmd.header.frame_id = 'map'
-            acker_cmd.drive.steering_angle = 0.0
-            acker_cmd.drive.steering_angle_velocity = 0.0
-            acker_cmd.drive.speed = 0.0
-            acker_cmd.drive.acceleration = 0.0 
-            acker_cmd.drive.jerk = 0.0
-            self.get_logger().info(f'STOPPED with avg x: {avg_x}')
-            self.safety_command.publish(acker_cmd)
+            if avg_x < self.current_speed*2:
+                acker_cmd = AckermannDriveStamped()
+                acker_cmd.header.stamp = self.get_clock().now().to_msg()
+                acker_cmd.header.frame_id = 'map'
+                acker_cmd.drive.steering_angle = 0.0
+                acker_cmd.drive.steering_angle_velocity = 0.0
+                acker_cmd.drive.speed = 0.0
+                acker_cmd.drive.acceleration = 0.0 
+                acker_cmd.drive.jerk = 0.0
+                self.get_logger().info(f'STOPPED with avg x: {avg_x}')
+                self.safety_command.publish(acker_cmd)
+        self.get_logger().info(f'length of x array: {len(relavent_ranges)}')
 
     def drive_callback(self, AckerMsg):
         current_speed = AckerMsg.drive.speed
