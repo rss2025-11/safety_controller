@@ -57,7 +57,7 @@ class SafetyController(Node):
 
             avg_x = np.mean(x)
 
-            if avg_x < self.current_speed * 2:
+            if abs(self.current_speed) > 0.01 or avg_x < self.current_speed * 2:
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
