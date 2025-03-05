@@ -29,16 +29,16 @@ class SafetyController(Node):
                                                      "/scan",
                                                      self.listener_callback,
                                                      10)
-        # self.acker_sub = self.create_subscription(AckermannDriveStamped,
-        #                                           self.DRIVE_TOPIC, 
-        #                                           self.listener_callback,
-        #                                           10)
+        self.acker_sub = self.create_subscription(AckermannDriveStamped,
+                                                  "/vesc/low_level/ackermann_cmd", 
+                                                  self.listener_callback,
+                                                  10)
         self.safety_command = self.create_publisher(AckermannDriveStamped,
                                                     "/vesc/low_level/input/safety",
                                                     10)
         
         # self.line_pub = self.create_publisher(Marker, "/wall", 1)
-    def listener_callback(self, LaserScanMsg):#, AckerCmd):
+    def listener_callback(self, LaserScanMsg, AckerMsg):#, AckerCmd):
         # manipulate laserscan message based on parameters
         ranges = np.array(LaserScanMsg.ranges)
         angle_min = LaserScanMsg.angle_min
@@ -68,7 +68,10 @@ class SafetyController(Node):
         distance_from_wall = np.abs(A*x_r+B*y_r+C)/np.sqrt(A**2+B**2)
 
         # if distance_from_wall < 0.25: # TODO: check value
-        if avg_x < 0.5:
+
+        current_speed = AckerMsg.drive.speed
+        
+        if avg_x < current_speed*2:
             acker_cmd = AckermannDriveStamped()
             acker_cmd.header.stamp = self.get_clock().now().to_msg()
             acker_cmd.header.frame_id = 'map'
