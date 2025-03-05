@@ -78,7 +78,7 @@ class SafetyController(Node):
             acker_cmd.drive.acceleration = 0.0 
             acker_cmd.drive.jerk = 0.0
             self.get_logger().info(f'STOPPED with avg x: {avg_x}')
-            # self.safety_command.publish(acker_cmd)
+            self.safety_command.publish(acker_cmd)
             # VisualizationTools.plot_line(x_ls, y_ls, self.line_pub, frame="/laser")
 
 
