@@ -71,6 +71,7 @@ class SafetyController(Node):
 
             buffer = max(2, self.current_speed * 2)
             if avg_x < buffer:
+                self.get_logger().info(f"STOPPED with avg x: {avg_x}")
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
