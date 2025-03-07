@@ -10,6 +10,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
+from std_msgs.msg import Float32
 
 
 class SafetyController(Node):
@@ -41,6 +42,10 @@ class SafetyController(Node):
             AckermannDriveStamped, "/vesc/low_level/input/safety", 10
         )
 
+        self.safety_publish = self.create_publisher(
+            Float32, "/safety_controller/distance_to_front_wall", 10
+        )
+
         self.current_speed = 0.0
 
     def scan_callback(self, LaserScanMsg):
@@ -61,6 +66,9 @@ class SafetyController(Node):
             x = relevant_ranges * np.cos(relevant_angles)
 
             avg_x = np.mean(x)
+            distance_msg = Float32()
+            distance_msg.data = avg_x
+            self.safety_publish.publish(distance_msg)
 
             buffer = max(self.BUFFER, self.BUFFER * self.current_speed)
             if avg_x < buffer:
@@ -68,7 +76,7 @@ class SafetyController(Node):
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
-                acker_cmd.drive.steering_angle = 0.0
+                acker_cmd.drive.steering_angle = -1/4 * np.pi
                 acker_cmd.drive.steering_angle_velocity = 0.0
                 acker_cmd.drive.speed = 0.0
                 acker_cmd.drive.acceleration = 0.0
