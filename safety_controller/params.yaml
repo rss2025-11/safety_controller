@@ -1,5 +1,5 @@
 safety_controller:
   ros__parameters:
     scan_topic: "/scan"
-    lookahead: 5.0
-    buffer: 1.0
+    lookahead: 1.5
+    buffer: 0.35

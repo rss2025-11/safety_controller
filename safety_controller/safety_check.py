@@ -47,6 +47,7 @@ class SafetyController(Node):
         )
 
         self.current_speed = 0.0
+        self.reverse_factor = 0.5
 
     def scan_callback(self, LaserScanMsg):
         ranges = np.array(LaserScanMsg.ranges)
@@ -61,11 +62,14 @@ class SafetyController(Node):
 
         relevant_ranges = ranges[mask_infront]
         relevant_angles = angles[mask_infront]
+        self.get_logger().info("Safety node is alive")
 
-        if len(relevant_ranges) != 0:
+        if len(relevant_ranges) >= 3:
             x = relevant_ranges * np.cos(relevant_angles)
 
-            avg_x = np.mean(x)
+            closest_points = np.sort(x)[: len(x) // 3]
+
+            avg_x = np.mean(closest_points)
             distance_msg = Float32()
             distance_msg.data = avg_x
             self.safety_publish.publish(distance_msg)
@@ -76,17 +80,22 @@ class SafetyController(Node):
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
-                acker_cmd.drive.steering_angle = -1/4 * np.pi
+                acker_cmd.drive.steering_angle = 0.0
                 acker_cmd.drive.steering_angle_velocity = 0.0
-                acker_cmd.drive.speed = 0.0
+                acker_cmd.drive.speed = 0.0 #-min(
+                    #self.reverse_factor, self.current_speed * self.reverse_factor
+                #)
                 acker_cmd.drive.acceleration = 0.0
                 acker_cmd.drive.jerk = 0.0
-
                 self.safety_command.publish(acker_cmd)
             else:
-                self.get_logger().debug("failed due to avg x")
+                self.get_logger().debug(
+                    f"No obstacle within buffer distance of {buffer}"
+                )
         else:
-            self.get_logger().debug("failed due to no relevant ranges")
+            self.get_logger().debug(
+                f"No front obstacle within lookahead distance of {look_ahead}"
+            )
 
     def drive_callback(self, AckerMsg):
         current_speed = AckerMsg.drive.speed
