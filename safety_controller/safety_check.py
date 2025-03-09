@@ -47,6 +47,7 @@ class SafetyController(Node):
         )
 
         self.current_speed = 0.0
+        self.steering_angle = 0.0
         self.reverse_factor = 0.5
 
     def scan_callback(self, LaserScanMsg):
@@ -62,19 +63,22 @@ class SafetyController(Node):
 
         relevant_ranges = ranges[mask_infront]
         relevant_angles = angles[mask_infront]
-        self.get_logger().info("Safety node is alive")
+        # self.get_logger().info("Safety node is alive")
 
-        if len(relevant_ranges) >= 3:
+        if len(relevant_ranges) >= 10:
             x = relevant_ranges * np.cos(relevant_angles)
 
-            closest_points = np.sort(x)[: len(x) // 3]
+            closest_points = np.sort(x)[:len(x) // 10]
+            # weights = 1/(x + 0.01) 
 
             avg_x = np.mean(closest_points)
             distance_msg = Float32()
             distance_msg.data = avg_x
             self.safety_publish.publish(distance_msg)
 
-            buffer = max(self.BUFFER, self.BUFFER * self.current_speed)
+
+            # turn_radius = 1.0#max(1.0, abs(self.steering_angle))
+            buffer = max(self.BUFFER, self.BUFFER * self.current_speed)#/(turn_radius)
             if avg_x < buffer:
                 self.get_logger().debug(f"STOPPED with avg x: {avg_x}")
                 acker_cmd = AckermannDriveStamped()
@@ -98,8 +102,9 @@ class SafetyController(Node):
             )
 
     def drive_callback(self, AckerMsg):
-        current_speed = AckerMsg.drive.speed
-        self.current_speed = current_speed
+        self.current_speed = AckerMsg.drive.speed
+        self.steering_angle = AckerMsg.drive.steering_angle
+
 
 
 def main():
