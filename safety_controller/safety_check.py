@@ -12,6 +12,7 @@ from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from std_msgs.msg import Float32
 import math
+from safety_controller.visualization_helper import SafetyVisualizer
 
 class SafetyController(Node):
     def __init__(self):
@@ -50,6 +51,13 @@ class SafetyController(Node):
         self.steering_angle = 0.0
         self.reverse_factor = 0.5
 
+        # Initialize visualizer
+        self.visualizer = SafetyVisualizer(self)
+        
+        # Define angle ranges for visualization
+        self.ANGLE_FRONT_MARGIN = 0.174533  # 10 degrees in radians
+        self.ANGLE_BACK_MARGIN = -0.174533  # -10 degrees in radians
+
     def scan_callback(self, LaserScanMsg):
         ranges = np.array(LaserScanMsg.ranges)
         angle_min = LaserScanMsg.angle_min
@@ -57,61 +65,63 @@ class SafetyController(Node):
         angle_increment = LaserScanMsg.angle_increment
         angles = np.arange(angle_min, angle_max, angle_increment)
 
-        # -20 to 20 degrees
+        # Visualize the view angle
+        self.visualizer.visualize_detection_angle(
+            self.ANGLE_FRONT_MARGIN, self.ANGLE_BACK_MARGIN, 1  # Using 1 since we look forward
+        )
+
+        # -10 to 10 degrees
         look_ahead = max(self.LOOKAHEAD, self.LOOKAHEAD * self.current_speed)
-        mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < look_ahead)
+        # mask_infront = (angles > -0.174533) & (angles < 0.174533) & (ranges < look_ahead)
 
-        relevant_ranges = ranges[mask_infront]
-        relevant_angles = angles[mask_infront]
-        # self.get_logger().info("Safety node is alive")
+        # relevant_ranges = ranges[mask_infront]
+        # relevant_angles = angles[mask_infront]
 
-        if len(relevant_ranges) >= 10:
-            x = relevant_ranges * np.cos(relevant_angles)
+        x = ranges * np.cos(angles)
+        y = ranges * np.sin(angles)
 
-            closest_points = np.sort(x)[:len(x) // 10]
-            # weights = 1/(x + 0.01) 
-
-            # x = x*weights
-
-            # avg_x = np.sum(x)/np.sum(weights)
+        side_distance = 0.2
+        sides_filter = (abs(y) < side_distance)
 
 
-            avg_x = np.mean(closest_points)
+        x = x[sides_filter]
+        y = y[sides_filter]
+        
+        mask_infront = (0 < x) & (x < look_ahead)
+
+        x = x[mask_infront]
+        y = y[mask_infront]
+
+        if len(x) >= 5:
+            closest_points = np.sort(x)[:len(x) // 5]
+            # avg_x = np.mean(closest_points)
+            min_x = np.min(x)
             distance_msg = Float32()
-            distance_msg.data = avg_x
+            distance_msg.data = min_x#avg_x
             self.safety_publish.publish(distance_msg)
 
+            # Visualize the average distance line and buffer line
+            # self.visualizer.visualize_obstacle_line(avg_x, (-1.0, 1.0))
+            self.visualizer.visualize_obstacle_line(min_x, (-1.0, 1.0))
 
-            # turn_radius = 1.0#max(1.0, abs(self.steering_angle))
-            buffer = self.BUFFER + (math.floor(self.current_speed) - 1)*0.05#max(self.BUFFER, self.BUFFER * self.current_speed)#/(turn_radius)
-            if avg_x < buffer:
-                # self.get_logger().debug(f"STOPPED with avg x: {avg_x}")
+            buffer = self.BUFFER + (math.floor(self.current_speed) - 1)*0.05
+            self.visualizer.visualize_buffer_line(buffer, (-1.0, 1.0))
+            # if avg_x < buffer:
+
+            if min_x < buffer:
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
                 acker_cmd.drive.steering_angle = 0.0
                 acker_cmd.drive.steering_angle_velocity = 0.0
-                acker_cmd.drive.speed = 0.0 #-min(
-                    #self.reverse_factor, self.current_speed * self.reverse_factor
-                #)
+                acker_cmd.drive.speed = 0.0
                 acker_cmd.drive.acceleration = 0.0
                 acker_cmd.drive.jerk = 0.0
                 self.safety_command.publish(acker_cmd)
-                # self.get_logger().info("Inside stopping control")
-        #     else:
-        #         # self.get_logger().debug(
-        #         #     f"No obstacle within buffer distance of {buffer}"
-        #         # )
-        # else:
-        #     # self.get_logger().debug(
-        #     #     f"No front obstacle within lookahead distance of {look_ahead}"
-        #     # )
 
     def drive_callback(self, AckerMsg):
         self.current_speed = AckerMsg.drive.speed
         self.steering_angle = AckerMsg.drive.steering_angle
-
-
 
 def main():
     rclpy.init()
@@ -119,7 +129,6 @@ def main():
     rclpy.spin(safety_controller)
     safety_controller.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
