@@ -11,7 +11,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 from std_msgs.msg import Float32
-
+import math
 
 class SafetyController(Node):
     def __init__(self):
@@ -71,6 +71,11 @@ class SafetyController(Node):
             closest_points = np.sort(x)[:len(x) // 10]
             # weights = 1/(x + 0.01) 
 
+            # x = x*weights
+
+            # avg_x = np.sum(x)/np.sum(weights)
+
+
             avg_x = np.mean(closest_points)
             distance_msg = Float32()
             distance_msg.data = avg_x
@@ -78,9 +83,9 @@ class SafetyController(Node):
 
 
             # turn_radius = 1.0#max(1.0, abs(self.steering_angle))
-            buffer = max(self.BUFFER, self.BUFFER * self.current_speed)#/(turn_radius)
+            buffer = self.BUFFER + (math.floor(self.current_speed) - 1)*0.05#max(self.BUFFER, self.BUFFER * self.current_speed)#/(turn_radius)
             if avg_x < buffer:
-                self.get_logger().debug(f"STOPPED with avg x: {avg_x}")
+                # self.get_logger().debug(f"STOPPED with avg x: {avg_x}")
                 acker_cmd = AckermannDriveStamped()
                 acker_cmd.header.stamp = self.get_clock().now().to_msg()
                 acker_cmd.header.frame_id = "map"
@@ -92,14 +97,15 @@ class SafetyController(Node):
                 acker_cmd.drive.acceleration = 0.0
                 acker_cmd.drive.jerk = 0.0
                 self.safety_command.publish(acker_cmd)
-            else:
-                self.get_logger().debug(
-                    f"No obstacle within buffer distance of {buffer}"
-                )
-        else:
-            self.get_logger().debug(
-                f"No front obstacle within lookahead distance of {look_ahead}"
-            )
+                # self.get_logger().info("Inside stopping control")
+        #     else:
+        #         # self.get_logger().debug(
+        #         #     f"No obstacle within buffer distance of {buffer}"
+        #         # )
+        # else:
+        #     # self.get_logger().debug(
+        #     #     f"No front obstacle within lookahead distance of {look_ahead}"
+        #     # )
 
     def drive_callback(self, AckerMsg):
         self.current_speed = AckerMsg.drive.speed
