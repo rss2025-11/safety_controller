@@ -25,8 +25,8 @@ class SafetyController(Node):
         self.SCAN_TOPIC = "/scan"
         self.DRIVE_TOPIC = self.get_parameter("drive_topic").value
         self.CONTROL_LISTENER_TOPIC = self.get_parameter("control_listener_topic").value
-        self.MIN_TTC_THRESHOLD_SEC = 1.5
-        self.MAX_DETECTION_RANGE_M = 20.0
+        self.MIN_TTC_THRESHOLD_SEC = 1.0
+        self.MAX_DETECTION_RANGE_M = 5.0
         self.CAR_FRONT_HALF_WIDTH = 0.16  # 16 cm
         self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(10)  # 10-degree flare on each side
 
