@@ -25,10 +25,11 @@ class SafetyController(Node):
         self.SCAN_TOPIC = "/scan"
         self.DRIVE_TOPIC = self.get_parameter("drive_topic").value
         self.CONTROL_LISTENER_TOPIC = self.get_parameter("control_listener_topic").value
-        self.MIN_TTC_THRESHOLD_SEC = 0.35
+        self.MIN_TTC_THRESHOLD_SEC = 0.55
         self.MAX_DETECTION_RANGE_M = 4.0
-        self.CAR_FRONT_HALF_WIDTH = 0.16  # 16 cm
-        self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(10)  # 10-degree flare on each side
+        self.CAR_FRONT_HALF_WIDTH = 0.13  # 16 cm is real value
+        self.STEER_FACTOR = 0.75
+        self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(5)  # 10-degree flare on each side
 
         # ROS Subscribers/Publishers
         self.laser_scan_sub = self.create_subscription(
@@ -69,7 +70,7 @@ class SafetyController(Node):
         # Create an array of angles for each lidar point, matching the ranges array
         angles = np.linspace(angle_min_scan, angle_max_scan, len(ranges))
 
-        center_fov_angle = self.current_steering_angle
+        center_fov_angle = self.current_steering_angle * self.STEER_FACTOR
 
         # Initial filter for basic validity of ranges
         valid_range_mask = np.isfinite(ranges)
