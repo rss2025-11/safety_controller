@@ -25,8 +25,8 @@ class SafetyController(Node):
         self.SCAN_TOPIC = "/scan"
         self.DRIVE_TOPIC = self.get_parameter("drive_topic").value
         self.CONTROL_LISTENER_TOPIC = self.get_parameter("control_listener_topic").value
-        self.MIN_TTC_THRESHOLD_SEC = 1.0
-        self.MAX_DETECTION_RANGE_M = 5.0
+        self.MIN_TTC_THRESHOLD_SEC = 0.35
+        self.MAX_DETECTION_RANGE_M = 4.0
         self.CAR_FRONT_HALF_WIDTH = 0.16  # 16 cm
         self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(10)  # 10-degree flare on each side
 
@@ -133,7 +133,7 @@ class SafetyController(Node):
             acker_cmd.header.frame_id = "map"
             acker_cmd.drive.steering_angle = 0.0
             acker_cmd.drive.steering_angle_velocity = 0.0
-            acker_cmd.drive.speed = 0.0
+            acker_cmd.drive.speed = -0.7
             acker_cmd.drive.acceleration = 0.0
             acker_cmd.drive.jerk = 0.0
             self.safety_command.publish(acker_cmd)
