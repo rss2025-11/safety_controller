@@ -10,25 +10,20 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
-from std_msgs.msg import Float32
 
 
 class SafetyController(Node):
     def __init__(self):
         super().__init__("safety_controller")
 
-        self.declare_parameter("scan_topic", "/scan")
-        self.declare_parameter("lookahead", 5.0)  # in seconds
-        self.declare_parameter("buffer", 2.0)  # in meters
+        # Hardcoded parameters
+        self.SCAN_TOPIC = "/scan"
+        self.MIN_TTC_THRESHOLD_SEC = 1.5
+        self.MAX_DETECTION_RANGE_M = 20.0
+        self.CAR_FRONT_HALF_WIDTH = 0.4
+        self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(10)  # 10-degree flare on each side
 
-        self.SCAN_TOPIC = (
-            self.get_parameter("scan_topic").get_parameter_value().string_value
-        )
-        self.LOOKAHEAD = (
-            self.get_parameter("lookahead").get_parameter_value().double_value
-        )
-        self.BUFFER = self.get_parameter("buffer").get_parameter_value().double_value
-
+        # ROS Subscribers/Publishers
         self.laser_scan_sub = self.create_subscription(
             LaserScan, self.SCAN_TOPIC, self.scan_callback, 10
         )
@@ -41,56 +36,95 @@ class SafetyController(Node):
         self.safety_command = self.create_publisher(
             AckermannDriveStamped, "/vesc/low_level/input/safety", 10
         )
-
-        self.safety_publish = self.create_publisher(
-            Float32, "/safety_controller/distance_to_front_wall", 10
-        )
+        # self.safety_publish publisher was removed by user
 
         self.current_speed = 0.0
+        self.current_steering_angle = 0.0
 
     def scan_callback(self, LaserScanMsg):
+        # Early exit if not moving forward
+        if self.current_speed <= 1e-3:
+            return
+
         ranges = np.array(LaserScanMsg.ranges)
-        angle_min = LaserScanMsg.angle_min
-        angle_max = LaserScanMsg.angle_max
-        angle_increment = LaserScanMsg.angle_increment
-        angles = np.arange(angle_min, angle_max, angle_increment)
+        angle_min_scan = LaserScanMsg.angle_min
+        angle_max_scan = LaserScanMsg.angle_max
 
-        # -20 to 20 degrees
-        look_ahead = max(self.LOOKAHEAD, self.LOOKAHEAD * self.current_speed)
-        mask_infront = (angles > -0.349) & (angles < 0.349) & (ranges < look_ahead)
+        # Create an array of angles for each lidar point, matching the ranges array
+        angles = np.linspace(angle_min_scan, angle_max_scan, len(ranges))
 
-        relevant_ranges = ranges[mask_infront]
-        relevant_angles = angles[mask_infront]
+        center_fov_angle = self.current_steering_angle
 
-        if len(relevant_ranges) != 0:
-            x = relevant_ranges * np.cos(relevant_angles)
+        # Initial filter for basic validity of ranges
+        valid_range_mask = np.isfinite(ranges)
+        valid_ranges = ranges[valid_range_mask]
+        valid_angles_absolute = angles[valid_range_mask]
 
-            avg_x = np.mean(x)
-            distance_msg = Float32()
-            distance_msg.data = avg_x
-            self.safety_publish.publish(distance_msg)
-
-            buffer = max(self.BUFFER, self.BUFFER * self.current_speed)
-            if avg_x < buffer:
-                self.get_logger().debug(f"STOPPED with avg x: {avg_x}")
-                acker_cmd = AckermannDriveStamped()
-                acker_cmd.header.stamp = self.get_clock().now().to_msg()
-                acker_cmd.header.frame_id = "map"
-                acker_cmd.drive.steering_angle = -1/4 * np.pi
-                acker_cmd.drive.steering_angle_velocity = 0.0
-                acker_cmd.drive.speed = 0.0
-                acker_cmd.drive.acceleration = 0.0
-                acker_cmd.drive.jerk = 0.0
-
-                self.safety_command.publish(acker_cmd)
-            else:
-                self.get_logger().debug("failed due to avg x")
+        if len(valid_ranges) == 0:
+            # No valid points from scan at all, effectively same as no points in trapezoid
+            effective_distance = float("inf")
         else:
-            self.get_logger().debug("failed due to no relevant ranges")
+            # Transform points to Cartesian relative to steered centerline
+            angles_relative_to_center = valid_angles_absolute - center_fov_angle
+            # Normalize angles to [-pi, pi]
+            angles_relative_to_center = (angles_relative_to_center + np.pi) % (
+                2 * np.pi
+            ) - np.pi
+
+            px_all = valid_ranges * np.sin(angles_relative_to_center)
+            py_all = valid_ranges * np.cos(angles_relative_to_center)
+
+            # Filter points within the trapezoid
+            py_mask = (py_all >= 0) & (py_all <= self.MAX_DETECTION_RANGE_M)
+
+            # Calculate lateral allowance at each py_all distance
+            # Ensure py_all used here is only positive for tan calculation if flare angle is large
+            # However, since py_mask already filters for py_all >=0, this should be fine.
+            max_lateral_at_py = self.CAR_FRONT_HALF_WIDTH + py_all * np.tan(
+                self.TRAPEZOID_FLARE_ANGLE_RAD
+            )
+
+            px_mask = (px_all >= -max_lateral_at_py) & (px_all <= max_lateral_at_py)
+
+            final_trapezoid_mask = py_mask & px_mask
+            x_forward_distances_in_trapezoid = py_all[final_trapezoid_mask]
+
+            # Calculate effective_distance from points within the trapezoid
+            if len(x_forward_distances_in_trapezoid) >= 3:
+                num_to_average = len(x_forward_distances_in_trapezoid) // 3
+                closest_subset = np.sort(x_forward_distances_in_trapezoid)[
+                    :num_to_average
+                ]
+                effective_distance = np.mean(closest_subset)
+            else:
+                effective_distance = float("inf")
+
+        should_stop = False
+        reason_for_stop_consideration = "N/A"
+
+        if effective_distance != float("inf"):
+            current_ttc = effective_distance / self.current_speed
+            if current_ttc < self.MIN_TTC_THRESHOLD_SEC:
+                should_stop = True
+                reason_for_stop_consideration = f"TTC {current_ttc:.2f}s < threshold {self.MIN_TTC_THRESHOLD_SEC:.2f}s (dist {effective_distance:.2f}m, speed {self.current_speed:.2f}m/s)"
+
+        if should_stop:
+            self.get_logger().info(
+                f"STOPPING: Speed {self.current_speed:.2f}m/s. Reason: {reason_for_stop_consideration}."
+            )
+            acker_cmd = AckermannDriveStamped()
+            acker_cmd.header.stamp = self.get_clock().now().to_msg()
+            acker_cmd.header.frame_id = "map"
+            acker_cmd.drive.steering_angle = 0.0
+            acker_cmd.drive.steering_angle_velocity = 0.0
+            acker_cmd.drive.speed = 0.0
+            acker_cmd.drive.acceleration = 0.0
+            acker_cmd.drive.jerk = 0.0
+            self.safety_command.publish(acker_cmd)
 
     def drive_callback(self, AckerMsg):
-        current_speed = AckerMsg.drive.speed
-        self.current_speed = current_speed
+        self.current_speed = AckerMsg.drive.speed
+        self.current_steering_angle = AckerMsg.drive.steering_angle
 
 
 def main():
