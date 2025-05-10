@@ -10,17 +10,24 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
+from .safety_visualization import SafetyVisualizer
 
 
 class SafetyController(Node):
     def __init__(self):
         super().__init__("safety_controller")
+        self.declare_parameter("drive_topic", "/vesc/low_level/input/safety")
+        self.declare_parameter(
+            "control_listener_topic", "/vesc/low_level/ackermann_cmd"
+        )
 
         # Hardcoded parameters
         self.SCAN_TOPIC = "/scan"
+        self.DRIVE_TOPIC = self.get_parameter("drive_topic").value
+        self.CONTROL_LISTENER_TOPIC = self.get_parameter("control_listener_topic").value
         self.MIN_TTC_THRESHOLD_SEC = 1.5
         self.MAX_DETECTION_RANGE_M = 20.0
-        self.CAR_FRONT_HALF_WIDTH = 0.16    # 16 cm
+        self.CAR_FRONT_HALF_WIDTH = 0.16  # 16 cm
         self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(10)  # 10-degree flare on each side
 
         # ROS Subscribers/Publishers
@@ -29,14 +36,21 @@ class SafetyController(Node):
         )
         self.acker_sub = self.create_subscription(
             AckermannDriveStamped,
-            "/vesc/low_level/ackermann_cmd",
+            self.CONTROL_LISTENER_TOPIC,
             self.drive_callback,
             10,
         )
         self.safety_command = self.create_publisher(
-            AckermannDriveStamped, "/vesc/low_level/input/safety", 10
+            AckermannDriveStamped, self.DRIVE_TOPIC, 10
         )
-        # self.safety_publish publisher was removed by user
+
+        # Instantiate the visualizer
+        self.visualizer = SafetyVisualizer(
+            self,
+            max_detection_range=self.MAX_DETECTION_RANGE_M,
+            car_front_half_width=self.CAR_FRONT_HALF_WIDTH,
+            trapezoid_flare_angle_rad=self.TRAPEZOID_FLARE_ANGLE_RAD,
+        )
 
         self.current_speed = 0.0
         self.current_steering_angle = 0.0
@@ -44,6 +58,8 @@ class SafetyController(Node):
     def scan_callback(self, LaserScanMsg):
         # Early exit if not moving forward
         if self.current_speed <= 1e-3:
+            # If visualizer exists and we want to clear/show empty when not active:
+            # self.visualizer.update_visualization(LaserScanMsg.header.frame_id, 0.0, self.MAX_DETECTION_RANGE_M, self.CAR_FRONT_HALF_WIDTH, self.TRAPEZOID_FLARE_ANGLE_RAD, math.inf, False)
             return
 
         ranges = np.array(LaserScanMsg.ranges)
@@ -121,6 +137,16 @@ class SafetyController(Node):
             acker_cmd.drive.acceleration = 0.0
             acker_cmd.drive.jerk = 0.0
             self.safety_command.publish(acker_cmd)
+
+        # Call the visualizer update method
+        # Ensure to use math.inf when passing effective_distance if that's what visualizer expects
+        # For now, assuming float('inf') is handled or visualizer uses math.inf internally
+        self.visualizer.update_visualization(
+            frame_id=LaserScanMsg.header.frame_id,
+            center_fov_angle=center_fov_angle,  # This is self.current_steering_angle
+            effective_distance=effective_distance,  # Pass the calculated effective_distance
+            should_stop=should_stop,
+        )
 
     def drive_callback(self, AckerMsg):
         self.current_speed = AckerMsg.drive.speed

@@ -3,3 +3,5 @@ safety_controller:
     scan_topic: "/scan"
     lookahead: 5.0
     buffer: 1.0
+    drive_topic: "/vesc/low_level/input/safety"
+    control_listener_topic: "/vesc/low_level/ackermann_cmd"
