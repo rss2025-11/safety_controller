@@ -20,7 +20,7 @@ class SafetyController(Node):
         self.SCAN_TOPIC = "/scan"
         self.MIN_TTC_THRESHOLD_SEC = 1.5
         self.MAX_DETECTION_RANGE_M = 20.0
-        self.CAR_FRONT_HALF_WIDTH = 0.4
+        self.CAR_FRONT_HALF_WIDTH = 0.16    # 16 cm
         self.TRAPEZOID_FLARE_ANGLE_RAD = np.deg2rad(10)  # 10-degree flare on each side
 
         # ROS Subscribers/Publishers
